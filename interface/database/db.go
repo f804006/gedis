@@ -21,6 +21,7 @@ type EmbedDB interface {
 	ExecWithLock(conn redis.Connection, cmdLine [][]byte) redis.Reply
 	ExecMulti(conn redis.Connection, watching map[string]uint32, cmdLines []CmdLine) redis.Reply
 	GetUndoLogs(dbIndex int, cmdLine [][]byte) []CmdLine
+	// ForEach 两个参数, 一个db的序号，一个处理方法(返回值为bool)
 	ForEach(dbIndex int, cb func(key string, data *DataEntity, expiration *time.Time) bool)
 	RWLocks(dbIndex int, writeKeys []string, readKeys []string)
 	RWUnLocks(dbIndex int, writeKeys []string, readKeys []string)

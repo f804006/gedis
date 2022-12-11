@@ -36,14 +36,18 @@ func (cluster *Cluster) returnPeerClient(peer string, peerClient *client.Client)
 
 var defaultRelayImpl = func(cluster *Cluster, node string, c redis.Connection, cmdLine CmdLine) redis.Reply {
 	if node == cluster.self {
+		// 若数据在本地则直接调用数据库引擎
 		// to self db
 		return cluster.db.Exec(c, cmdLine)
 	}
+	// 从连接池取一个与目标节点的连接
+	// 连接池使用 github.com/jolestar/go-commons-pool/v2 实现
 	peerClient, err := cluster.getPeerClient(node)
 	if err != nil {
 		return protocol.MakeErrReply(err.Error())
 	}
 	defer func() {
+		// 处理完成后将连接放回连接池
 		_ = cluster.returnPeerClient(node, peerClient)
 	}()
 	peerClient.Send(utils.ToCmdLine("SELECT", strconv.Itoa(c.GetDBIndex())))

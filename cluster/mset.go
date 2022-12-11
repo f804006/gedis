@@ -21,10 +21,14 @@ func MGet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 	}
 
 	resultMap := make(map[string][]byte)
+
+	// 计算每个 key 所在的节点，并按照节点分组  map[peer] []keys
 	groupMap := cluster.groupBy(keys)
+
 	for peer, group := range groupMap {
 		resp := cluster.relay(peer, c, makeArgs("MGET", group...))
 		if protocol.IsErrorReply(resp) {
+			// 若某个节点出错，则直接 return ，退出整个 MGET 操作，可以保证原子性
 			errReply := resp.(protocol.ErrorReply)
 			return protocol.MakeErrReply(fmt.Sprintf("ERR during get %s occurs: %v", group[0], errReply.Error()))
 		}
@@ -47,7 +51,7 @@ func MSet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 	if argCount%2 != 0 || argCount < 1 {
 		return protocol.MakeErrReply("ERR wrong number of arguments for 'mset' command")
 	}
-
+	// 有多少对key-value
 	size := argCount / 2
 	keys := make([]string, size)
 	valueMap := make(map[string]string)
@@ -58,6 +62,7 @@ func MSet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 
 	groupMap := cluster.groupBy(keys)
 	if len(groupMap) == 1 && allowFastTransaction { // do fast
+		// 若所有的 key 都在同一个节点直接执行，不使用较慢的 2pc 算法
 		for peer := range groupMap {
 			return cluster.relay(peer, c, cmdLine)
 		}
@@ -65,6 +70,7 @@ func MSet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 
 	//prepare
 	var errReply redis.Reply
+	// 使用 snowflake 算法决定事务 ID
 	txID := cluster.idGenerator.NextID()
 	txIDStr := strconv.FormatInt(txID, 10)
 	rollback := false
@@ -73,10 +79,13 @@ func MSet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 		for _, k := range group {
 			peerArgs = append(peerArgs, k, valueMap[k])
 		}
+		// peerArgs: [事务id, MSET, key1, value1, key2, value2]
 		var resp redis.Reply
 		if peer == cluster.self {
+			// 在本节点上的key， 进行prepare（注意，并不是commit）
 			resp = execPrepare(cluster, c, makeArgs("Prepare", peerArgs...))
 		} else {
+			// 在集群结点上的key
 			resp = cluster.relay(peer, c, makeArgs("Prepare", peerArgs...))
 		}
 		if protocol.IsErrorReply(resp) {
@@ -86,9 +95,10 @@ func MSet(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 		}
 	}
 	if rollback {
-		// rollback
+		// 若 prepare 过程出错则执行回滚
 		requestRollback(cluster, c, txID, groupMap)
 	} else {
+		// prepare 成功，要求所有节点提交
 		_, errReply = requestCommit(cluster, c, txID, groupMap)
 		rollback = errReply != nil
 	}

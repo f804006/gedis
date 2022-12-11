@@ -26,10 +26,14 @@ var (
 )
 
 // Handler implements tcp.Handler and serves as a redis server
+// Redis Server的一个实体
 type Handler struct {
+	// 活跃的客户端链接
 	activeConn sync.Map // *client -> placeholder
-	db         database.DB
-	closing    atomic.Boolean // refusing new client and new request
+	// 多个数据库
+	db database.DB
+	// 标记该Server是否关闭
+	closing atomic.Boolean // refusing new client and new request
 }
 
 // MakeHandler creates a Handler instance
@@ -37,8 +41,10 @@ func MakeHandler() *Handler {
 	var db database.DB
 	if config.Properties.Self != "" &&
 		len(config.Properties.Peers) > 0 {
+		// Cluster实现了DB接口
 		db = cluster.MakeCluster()
 	} else {
+		// MultiDB也实现了DB接口
 		db = database2.NewStandaloneServer()
 	}
 	return &Handler{
@@ -52,6 +58,7 @@ func (h *Handler) closeClient(client *connection.Connection) {
 	h.activeConn.Delete(client)
 }
 
+// Handle listener.Accept()有返回值之后，会调用该函数
 // Handle receives and executes redis commands
 func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 	if h.closing.Get() {
@@ -63,7 +70,10 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 	client := connection.NewConn(conn)
 	h.activeConn.Store(client, struct{}{})
 
+	// 解析该连接的所有（客户端传来的）命令，并都传到ch管道中
 	ch := parser.ParseStream(conn)
+
+	// 一直循环该链接的命令 ch
 	for payload := range ch {
 		if payload.Err != nil {
 			if payload.Err == io.EOF ||
@@ -88,12 +98,19 @@ func (h *Handler) Handle(ctx context.Context, conn net.Conn) {
 			logger.Error("empty payload")
 			continue
 		}
+		// 毕竟是条命令，肯定是用数组存
+		// r: *3CRLF$3CRLFsetCRLF$4CRLFkey1CRLF$6CRLFvalue1
 		r, ok := payload.Data.(*protocol.MultiBulkReply)
 		if !ok {
 			logger.Error("require multi bulk protocol")
 			continue
 		}
+		// 处理命令
+		logger.Info(string(r.ToBytes()))
+
+		// r.Args :  [set] [key] [value]
 		result := h.db.Exec(client, r.Args)
+		// result : +OK -Err syntax error or empty et
 		if result != nil {
 			_ = client.Write(result.ToBytes())
 		} else {

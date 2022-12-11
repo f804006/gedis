@@ -132,11 +132,13 @@ func execSet(db *DB, args [][]byte) redis.Reply {
 		for i := 2; i < len(args); i++ {
 			arg := strings.ToUpper(string(args[i]))
 			if arg == "NX" { // insert
+				// set key value nx second :只有 key 不存在才行
 				if policy == updatePolicy {
 					return &protocol.SyntaxErrReply{}
 				}
 				policy = insertPolicy
 			} else if arg == "XX" { // update policy
+				// set key value xx second :只有 key 存在才行
 				if policy == insertPolicy {
 					return &protocol.SyntaxErrReply{}
 				}
@@ -180,6 +182,7 @@ func execSet(db *DB, args [][]byte) redis.Reply {
 		}
 	}
 
+	// 因为value可以是任意类型，因此用 {}interface来接收
 	entity := &database.DataEntity{
 		Data: value,
 	}
@@ -196,8 +199,12 @@ func execSet(db *DB, args [][]byte) redis.Reply {
 	}
 	if result > 0 {
 		if ttl != unlimitedTTL {
+			// 如果在 set 语句中检测出后面有设置超时时间
 			expireTime := time.Now().Add(time.Duration(ttl) * time.Millisecond)
+			// 先记录超时时间
 			db.Expire(key, expireTime)
+
+			// 再写Aof
 			db.addAof(CmdLine{
 				[]byte("SET"),
 				args[0],

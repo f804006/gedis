@@ -80,6 +80,7 @@ func (db *DB) Exec(c redis.Connection, cmdLine [][]byte) redis.Reply {
 	// transaction control commands and other commands which cannot execute within transaction
 	cmdName := strings.ToLower(string(cmdLine[0]))
 	if cmdName == "multi" {
+		// 开启事务
 		if len(cmdLine) != 1 {
 			return protocol.MakeArgNumErrReply(cmdName)
 		}
@@ -118,11 +119,13 @@ func (db *DB) execNormalCommand(cmdLine [][]byte) redis.Reply {
 	}
 
 	prepare := cmd.prepare
-	write, read := prepare(cmdLine[1:])
+	write, read := prepare(cmdLine[1:]) // return key, nil
 	db.addVersion(write...)
 	db.RWLocks(write, read)
 	defer db.RWUnLocks(write, read)
-	fun := cmd.executor
+
+	// 上面都是key进行了处理，比如key的版本
+	fun := cmd.executor // executor才是把key与val对应起来的
 	return fun(db, cmdLine[1:])
 }
 
@@ -270,7 +273,7 @@ func (db *DB) IsExpired(key string) bool {
 }
 
 /* --- add version --- */
-
+// 记录key的版本？
 func (db *DB) addVersion(keys ...string) {
 	for _, key := range keys {
 		versionCode := db.GetVersion(key)

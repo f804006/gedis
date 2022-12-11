@@ -1,6 +1,6 @@
 module github.com/hdt3213/godis
 
-go 1.16
+go 1.18
 
 require (
 	github.com/hdt3213/rdb v1.0.5

@@ -13,19 +13,21 @@ type HashFunc func(data []byte) uint32
 // Map stores nodes and you can pick node from Map
 type Map struct {
 	hashFunc HashFunc
-	replicas int
-	keys     []int // sorted
-	hashMap  map[int]string
+	replicas int            // 虚拟节点个数
+	keys     []int          // sorted，存放排序的 hash值
+	hashMap  map[int]string // 虚拟节点 hash 值到物理节点地址的映射
 }
 
 // New creates a new Map
 func New(replicas int, fn HashFunc) *Map {
 	m := &Map{
+		// 每个物理节点会产生 replicas 个虚拟节点
 		replicas: replicas,
 		hashFunc: fn,
-		hashMap:  make(map[int]string),
+		hashMap:  make(map[int]string), // 虚拟节点 hash 值到物理节点地址的映射
 	}
 	if m.hashFunc == nil {
+		// 哈希函数
 		m.hashFunc = crc32.ChecksumIEEE
 	}
 	return m
@@ -42,8 +44,10 @@ func (m *Map) AddNode(keys ...string) {
 		if key == "" {
 			continue
 		}
+		// 添加虚拟节点
 		for i := 0; i < m.replicas; i++ {
 			hash := int(m.hashFunc([]byte(strconv.Itoa(i) + key)))
+			// 将虚拟节点添加到环上
 			m.keys = append(m.keys, hash)
 			m.hashMap[hash] = key
 		}
@@ -69,17 +73,24 @@ func (m *Map) PickNode(key string) string {
 	if m.IsEmpty() {
 		return ""
 	}
-
+	// 支持根据 key 的 hashtag 来确定分布
 	partitionKey := getPartitionKey(key)
+
+	// 计算出该 key 的 hash 值
 	hash := int(m.hashFunc([]byte(partitionKey)))
 
-	// Binary search for appropriate replica.
-	idx := sort.Search(len(m.keys), func(i int) bool { return m.keys[i] >= hash })
+	// sort.Search 会使用二分查找法搜索 keys 中满足 m.keys[i] >= hash 的最小 i 值
+	// 也就是寻找哈希环上顺时针找到的第一个结点
+	idx := sort.Search(len(m.keys), func(i int) bool {
+		return m.keys[i] >= hash
+	})
 
-	// Means we have cycled back to the first replica.
+	// 若 key 的 hash 值大于最后一个虚拟节点的 hash 值，则 sort.Search 找不到目标
+	// 这种情况下选择第一个虚拟节点
 	if idx == len(m.keys) {
 		idx = 0
 	}
 
+	// 将虚拟节点映射为实际地址
 	return m.hashMap[m.keys[idx]]
 }

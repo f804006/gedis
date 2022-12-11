@@ -1,5 +1,10 @@
 package utils
 
+import (
+	"reflect"
+	"unsafe"
+)
+
 // ToCmdLine convert strings to [][]byte
 func ToCmdLine(cmd ...string) [][]byte {
 	args := make([][]byte, len(cmd))
@@ -83,4 +88,19 @@ func ConvertRange(start int64, end int64, size int64) (int, int) {
 		return -1, -1
 	}
 	return int(start), int(end)
+}
+
+// 方案2：reflect.SliceHeader
+func StringToBytes(s string) []byte {
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&bh))
+}
+
+func BytesToString(b []byte) (s string) {
+	return *(*string)(unsafe.Pointer(&b))
 }

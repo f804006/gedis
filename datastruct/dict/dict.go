@@ -4,6 +4,7 @@ package dict
 type Consumer func(key string, val interface{}) bool
 
 // Dict is interface of a key-value data structure
+// ConcurrentDict 实现了该接口
 type Dict interface {
 	Get(key string) (val interface{}, exists bool)
 	Len() int

@@ -9,7 +9,7 @@ import (
 )
 
 func TestExec(t *testing.T) {
-	testCluster2 := MakeTestCluster([]string{"127.0.0.1:6379"})
+	testCluster2 := MakeTestCluster([]string{"127.0.0.1:6380", "127.0.0.1:6379"})
 	conn := &connection.FakeConn{}
 	for i := 0; i < 1000; i++ {
 		key := RandString(4)

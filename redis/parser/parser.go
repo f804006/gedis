@@ -194,6 +194,7 @@ func parseArray(header []byte, reader *bufio.Reader, ch chan<- *Payload) error {
 			protocolError(ch, "illegal bulk string header "+string(line))
 			break
 		}
+		// 拿到字符串长度
 		strLen, err := strconv.ParseInt(string(line[1:length-2]), 10, 64)
 		if err != nil || strLen < -1 {
 			protocolError(ch, "illegal bulk string length "+string(line))
@@ -201,6 +202,7 @@ func parseArray(header []byte, reader *bufio.Reader, ch chan<- *Payload) error {
 		} else if strLen == -1 {
 			lines = append(lines, []byte{})
 		} else {
+			// +2 是指的\r\n
 			body := make([]byte, strLen+2)
 			_, err := io.ReadFull(reader, body)
 			if err != nil {

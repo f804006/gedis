@@ -75,7 +75,10 @@ func (handler *Handler) handleAof() {
 	// serialized execution
 	handler.currentDB = 0
 	for p := range handler.aofChan {
+		// 写AOF时，仅加读锁
 		handler.pausingAof.RLock() // prevent other goroutines from pausing aof
+
+		// 先选择操作的数据库，该命令也需要记录到aof文件中
 		if p.dbIndex != handler.currentDB {
 			// select db
 			data := protocol.MakeMultiBulkReply(utils.ToCmdLine("SELECT", strconv.Itoa(p.dbIndex))).ToBytes()
@@ -87,6 +90,8 @@ func (handler *Handler) handleAof() {
 			}
 			handler.currentDB = p.dbIndex
 		}
+
+		// 然后再写命令到aof文件中
 		data := protocol.MakeMultiBulkReply(p.cmdLine).ToBytes()
 		_, err := handler.aofFile.Write(data)
 		if err != nil {

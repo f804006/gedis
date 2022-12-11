@@ -30,6 +30,7 @@ func NewQuickList() *QuickList {
 func (ql *QuickList) Add(val interface{}) {
 	ql.size++
 	if ql.data.Len() == 0 { // empty list
+		// 新建一个压缩列表
 		page := make([]interface{}, 0, pageSize)
 		page = append(page, val)
 		ql.data.PushBack(page)
@@ -39,6 +40,7 @@ func (ql *QuickList) Add(val interface{}) {
 	backNode := ql.data.Back()
 	backPage := backNode.Value.([]interface{})
 	if len(backPage) == cap(backPage) { // full page, create new page
+		// 如果最后一个压缩列表已经满了，就新建一个
 		page := make([]interface{}, 0, pageSize)
 		page = append(page, val)
 		ql.data.PushBack(page)

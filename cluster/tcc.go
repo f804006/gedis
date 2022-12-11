@@ -86,6 +86,7 @@ func (tx *Transaction) prepare() error {
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 
+	// 锁定相关 key 避免并发问题
 	tx.writeKeys, tx.readKeys = database.GetRelatedKeys(tx.cmdLine)
 	// lock writeKeys
 	tx.lockKeys()
@@ -123,14 +124,19 @@ func (tx *Transaction) rollbackWithLock() error {
 	return nil
 }
 
+// prepare 命令的格式是: Prepare txID, command, key1, key2 ...
+// TxID 是事务 ID, 由协调者决定. command 是 tcc 要执行的命令， 比如这里的 MSet
 // cmdLine: Prepare id cmdName args...
 func execPrepare(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Reply {
 	if len(cmdLine) < 3 {
 		return protocol.MakeErrReply("ERR wrong number of arguments for 'prepare' command")
 	}
 	txID := string(cmdLine[1])
+	// MSET
 	cmdName := strings.ToLower(string(cmdLine[2]))
+	// 创建新的事务
 	tx := NewTransaction(cluster, c, txID, cmdLine[2:])
+	// 在节点上记录该事务
 	cluster.transactions.Put(txID, tx)
 	err := tx.prepare()
 	if err != nil {
@@ -180,21 +186,30 @@ func execCommit(cluster *Cluster, c redis.Connection, cmdLine CmdLine) redis.Rep
 	}
 	tx, _ := raw.(*Transaction)
 
+	// 锁定事务
+	// 执行者在 commit 阶段可能收到协调者发来的回滚命令，需要避免一个协程在提交另一个协程在回滚造成异常
 	tx.mu.Lock()
 	defer tx.mu.Unlock()
 
+	// ExecWithLock 自己不会锁定相关 key, 需要调用方提供锁
+	// 由于在 prepare 阶段相关 key 已经被锁定，所以使用 ExecWithLock 即可
 	result := cluster.db.ExecWithLock(c, tx.cmdLine)
 
 	if protocol.IsErrorReply(result) {
 		// failed
+		// 提交失败本地回滚并向协调者返回错误
 		err2 := tx.rollbackWithLock()
 		return protocol.MakeErrReply(fmt.Sprintf("err occurs when rollback: %v, origin err: %s", err2, result))
 	}
 	// after committed
+	// 提交完成，解锁相关key
 	tx.unLockKeys()
 	tx.status = committedStatus
+
 	// clean finished transaction
 	// do not clean immediately, in case rollback
+	// 通过时间轮延时清理事务上下文
+	// 由于协调者可能在提交完成后要求回滚事务，所以不能立即进行清理
 	timewheel.Delay(waitBeforeCleanTx, "", func() {
 		cluster.transactions.Remove(tx.id)
 	})

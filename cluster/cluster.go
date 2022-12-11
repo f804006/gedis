@@ -1,4 +1,7 @@
-// Package cluster provides a server side cluster which is transparent to client. You can connect to any node in the cluster to access all data in the cluster
+// Package cluster provides a server side cluster which is transparent to client.
+// You can connect to any node in the cluster to access all data in the cluster
+
+// Package cluster 集群最核心的逻辑是找到 key 所在节点并将指令转发过去
 package cluster
 
 import (
@@ -20,8 +23,8 @@ import (
 )
 
 type PeerPicker interface {
-	AddNode(keys ...string)
-	PickNode(key string) string
+	AddNode(keys ...string)     // 添加集群结点至哈希环
+	PickNode(key string) string // 选择 key 所落在的节点（顺时针第一个结点）
 }
 
 // Cluster represents a node of godis cluster
@@ -30,13 +33,13 @@ type Cluster struct {
 	self string
 
 	nodes           []string
-	peerPicker      PeerPicker
-	nodeConnections map[string]*pool.Pool
+	peerPicker      PeerPicker            // 哈希环
+	nodeConnections map[string]*pool.Pool // Redis链接
 
-	db           database.EmbedDB
+	db           database.EmbedDB // 多个分段map
 	transactions *dict.SimpleDict // id -> Transaction
 
-	idGenerator *idgenerator.IDGenerator
+	idGenerator *idgenerator.IDGenerator // 使用 snowflake 算法决定事务 ID
 	// use a variable to allow injecting stub for testing
 	relayImpl func(cluster *Cluster, node string, c redis.Connection, cmdLine CmdLine) redis.Reply
 }
@@ -50,9 +53,9 @@ var allowFastTransaction = true
 
 // MakeCluster creates and starts a node of cluster
 func MakeCluster() *Cluster {
+	// 集群主节点
 	cluster := &Cluster{
-		self: config.Properties.Self,
-
+		self:            config.Properties.Self,
 		db:              database2.NewStandaloneServer(),
 		transactions:    dict.MakeSimple(),
 		peerPicker:      consistenthash.New(replicas, nil),
@@ -62,7 +65,9 @@ func MakeCluster() *Cluster {
 		relayImpl:   defaultRelayImpl,
 	}
 	contains := make(map[string]struct{})
+	// 集群数量 + self
 	nodes := make([]string, 0, len(config.Properties.Peers)+1)
+	// Peers  eg. ["127.0.0.1:6379", "127.0.0.1:6380"]
 	for _, peer := range config.Properties.Peers {
 		if _, ok := contains[peer]; ok {
 			continue
@@ -71,6 +76,8 @@ func MakeCluster() *Cluster {
 		nodes = append(nodes, peer)
 	}
 	nodes = append(nodes, config.Properties.Self)
+
+	// cluster.peerPicker相当于就是哈希环，哈希环上服务器结点
 	cluster.peerPicker.AddNode(nodes...)
 	connectionPoolConfig := pool.Config{
 		MaxIdle:   1,
@@ -167,8 +174,9 @@ func (cluster *Cluster) Exec(c redis.Connection, cmdLine [][]byte) (result redis
 	if !ok {
 		return protocol.MakeErrReply("ERR unknown command '" + cmdName + "', or not supported in cluster mode")
 	}
+
 	result = cmdFunc(cluster, c, cmdLine)
-	return
+	return result
 }
 
 // AfterClientClose does some clean after client close connection

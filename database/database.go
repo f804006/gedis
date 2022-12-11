@@ -20,7 +20,7 @@ import (
 
 // MultiDB is a set of multiple database set
 type MultiDB struct {
-	dbSet []*atomic.Value // *DB
+	dbSet []*atomic.Value // 实际结构就是*DB
 
 	// handle publish/subscribe
 	hub *pubsub.Hub
@@ -39,6 +39,7 @@ func NewStandaloneServer() *MultiDB {
 	if config.Properties.Databases == 0 {
 		config.Properties.Databases = 16
 	}
+	// 创建数据库集合，即MultiDB的dbSet熟悉
 	mdb.dbSet = make([]*atomic.Value, config.Properties.Databases)
 	for i := range mdb.dbSet {
 		singleDB := makeDB()
@@ -170,6 +171,7 @@ func (mdb *MultiDB) Exec(c redis.Connection, cmdLine [][]byte) (result redis.Rep
 	}
 	// todo: support multi database transaction
 
+	// 常规命令 get set
 	// normal commands
 	dbIndex := c.GetDBIndex()
 	selectedDB, errReply := mdb.selectDB(dbIndex)
