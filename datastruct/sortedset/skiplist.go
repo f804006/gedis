@@ -55,11 +55,20 @@ func makeSkiplist() *skiplist {
 	}
 }
 
+// 优化点1：更快的生成某结点的高度
+// 当 level>1 时，时间开销就从循环变成固定开销，会快一点点。
 func randomLevel() int16 {
 	total := uint64(1)<<uint64(maxLevel) - 1
 	k := rand.Uint64() % total
+	// Len64 返回表示 k 所需的最小位数
 	return maxLevel - int16(bits.Len64(k)) + 1
 }
+
+// example:
+// total = 1023
+// 0 <= k < 1023
+// if 512 < k < 1023 => Level = 1
+// if 256 < k < 512  => Level = 2
 
 func (skiplist *skiplist) insert(member string, score float64) *node {
 	update := make([]*node, maxLevel) // link new node with node in `update`

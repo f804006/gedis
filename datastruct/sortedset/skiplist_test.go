@@ -1,6 +1,10 @@
 package sortedset
 
-import "testing"
+import (
+	"fmt"
+	"math/bits"
+	"testing"
+)
 
 func TestRandomLevel(t *testing.T) {
 	m := make(map[int16]int)
@@ -11,4 +15,9 @@ func TestRandomLevel(t *testing.T) {
 	for i := 0; i <= maxLevel; i++ {
 		t.Logf("level %d, count %d", i, m[int16(i)])
 	}
+}
+
+func TestLen64(t *testing.T) {
+	num := uint64(511)
+	fmt.Print(bits.Len64(num))
 }
